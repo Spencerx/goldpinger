@@ -121,6 +121,39 @@ func (p *Pinger) Ping() {
 	p.histogram.Observe(responseTime.Seconds())
 
 	OK := (err == nil)
+
+	// Run UDP probe if enabled
+	var lossPct float64
+	var pathLength int32
+	var udpRttMs float64
+	if GoldpingerConfig.UDPEnabled {
+		targetIP := pickPodHostIP(p.pod.PodIP, p.pod.HostIP)
+		udpResult := ProbeUDP(
+			targetIP,
+			GoldpingerConfig.UDPPort,
+			GoldpingerConfig.UDPPacketCount,
+			GoldpingerConfig.UDPPacketSize,
+			GoldpingerConfig.UDPTimeout,
+		)
+		lossPct = udpResult.LossPct
+		pathLength = udpResult.PathLength
+		udpRttMs = udpResult.AvgRttMs
+		if udpResult.Err != nil {
+			p.logger.Warn("UDP probe error", zap.Error(udpResult.Err))
+		} else {
+			p.logger.Debug("UDP probe complete",
+				zap.Float64("lossPct", lossPct),
+				zap.Int32("pathLength", pathLength),
+				zap.Float64("udpRttMs", udpRttMs),
+			)
+		}
+		SetPeerLossPct(p.pod.HostIP, p.pod.PodIP, lossPct)
+		SetPeerPathLength(p.pod.HostIP, p.pod.PodIP, pathLength)
+		if udpRttMs > 0 {
+			ObservePeerUDPRtt(p.pod.HostIP, p.pod.PodIP, udpRttMs)
+		}
+	}
+
 	if OK {
 		p.resultsChan <- PingAllPodsResult{
 			podName: p.pod.Name,
@@ -132,6 +165,9 @@ func (p *Pinger) Ping() {
 				Response:       resp.Payload,
 				StatusCode:     200,
 				ResponseTimeMs: responseTimeMs,
+				LossPct:        lossPct,
+				PathLength:     pathLength,
+				UDPRttMs:       udpRttMs,
 			},
 		}
 		p.logger.Debug("Success pinging pod", zap.Duration("responseTime", responseTime))
@@ -146,6 +182,9 @@ func (p *Pinger) Ping() {
 				Error:          err.Error(),
 				StatusCode:     504,
 				ResponseTimeMs: responseTimeMs,
+				LossPct:        lossPct,
+				PathLength:     pathLength,
+				UDPRttMs:       udpRttMs,
 			},
 		}
 		p.logger.Warn("Ping returned error", zap.Duration("responseTime", responseTime), zap.Error(err))
