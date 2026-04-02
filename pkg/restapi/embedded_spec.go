@@ -309,15 +309,15 @@ func init() {
         "error": {
           "type": "string"
         },
+        "hop-count": {
+          "description": "estimated network hop count from UDP TTL",
+          "type": "integer",
+          "format": "int32"
+        },
         "loss-pct": {
           "description": "UDP packet loss percentage (0-100)",
           "type": "number",
           "format": "double"
-        },
-        "path-length": {
-          "description": "estimated network hop count from UDP TTL",
-          "type": "integer",
-          "format": "int32"
         },
         "response": {
           "$ref": "#/definitions/PingResults"
@@ -661,15 +661,15 @@ func init() {
         "error": {
           "type": "string"
         },
+        "hop-count": {
+          "description": "estimated network hop count from UDP TTL",
+          "type": "integer",
+          "format": "int32"
+        },
         "loss-pct": {
           "description": "UDP packet loss percentage (0-100)",
           "type": "number",
           "format": "double"
-        },
-        "path-length": {
-          "description": "estimated network hop count from UDP TTL",
-          "type": "integer",
-          "format": "int32"
         },
         "response": {
           "$ref": "#/definitions/PingResults"

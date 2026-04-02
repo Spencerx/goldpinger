@@ -395,8 +395,8 @@ var main = function(timeout){
                         if (edge._data["loss-pct"] > 0) {
                                 label += " " + edge._data["loss-pct"].toFixed(1) + "% loss";
                         }
-                        if (edge._data["path-length"] > 0) {
-                                label += " " + edge._data["path-length"] + " hops";
+                        if (edge._data["hop-count"] > 0) {
+                                label += " " + edge._data["hop-count"] + " hops";
                         }
                         var edge = {
                                 id: "e" + i,

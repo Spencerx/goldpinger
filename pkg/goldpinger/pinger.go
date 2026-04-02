@@ -179,7 +179,7 @@ func (p *Pinger) Ping() {
 				StatusCode:     200,
 				ResponseTimeMs: responseTimeMs,
 				LossPct:        lossPct,
-				PathLength:     hopCount,
+				HopCount:       hopCount,
 				UDPRttMs:       udpRttMs,
 			},
 		}
@@ -196,7 +196,7 @@ func (p *Pinger) Ping() {
 				StatusCode:     504,
 				ResponseTimeMs: responseTimeMs,
 				LossPct:        lossPct,
-				PathLength:     hopCount,
+				HopCount:       hopCount,
 				UDPRttMs:       udpRttMs,
 			},
 		}

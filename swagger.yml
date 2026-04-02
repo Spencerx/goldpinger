@@ -65,7 +65,7 @@ definitions:
         type: number
         format: double
         description: UDP packet loss percentage (0-100)
-      path-length:
+      hop-count:
         type: integer
         format: int32
         description: estimated network hop count from UDP TTL

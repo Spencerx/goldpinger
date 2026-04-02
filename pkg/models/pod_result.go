@@ -35,11 +35,11 @@ type PodResult struct {
 	// error
 	Error string `json:"error,omitempty"`
 
+	// estimated network hop count from UDP TTL
+	HopCount int32 `json:"hop-count,omitempty"`
+
 	// UDP packet loss percentage (0-100)
 	LossPct float64 `json:"loss-pct,omitempty"`
-
-	// estimated network hop count from UDP TTL
-	PathLength int32 `json:"path-length,omitempty"`
 
 	// response
 	Response *PingResults `json:"response,omitempty"`
