@@ -134,9 +134,9 @@ var (
 			"pod_ip",
 		},
 	)
-	goldpingerPeersPathLength = prometheus.NewGaugeVec(
+	goldpingerPeersHopCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "goldpinger_peers_path_length",
+			Name: "goldpinger_peers_hop_count",
 			Help: "Estimated network hop count to peer from UDP TTL",
 		},
 		[]string{
@@ -147,14 +147,24 @@ var (
 	)
 	goldpingerPeersUDPRtt = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "goldpinger_peers_udp_rtt_ms",
-			Help:    "Histogram of UDP round-trip times to peers in milliseconds",
-			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 10, 25, 50, 100, 250, 500, 1000},
+			Name:    "goldpinger_peers_udp_rtt_s",
+			Help:    "Histogram of UDP round-trip times to peers in seconds",
+			Buckets: []float64{.0001, .00025, .0005, .001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
 		},
 		[]string{
 			"goldpinger_instance",
 			"host_ip",
 			"pod_ip",
+		},
+	)
+	goldpingerUDPErrorsCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "goldpinger_udp_errors_total",
+			Help: "Statistics of UDP probe errors per instance",
+		},
+		[]string{
+			"goldpinger_instance",
+			"host",
 		},
 	)
 	bootTime = time.Now()
@@ -171,8 +181,9 @@ func init() {
 	prometheus.MustRegister(goldPingerHttpErrorsCounter)
 	prometheus.MustRegister(goldPingerTcpErrorsCounter)
 	prometheus.MustRegister(goldpingerPeersLossPct)
-	prometheus.MustRegister(goldpingerPeersPathLength)
+	prometheus.MustRegister(goldpingerPeersHopCount)
 	prometheus.MustRegister(goldpingerPeersUDPRtt)
+	prometheus.MustRegister(goldpingerUDPErrorsCounter)
 	zap.L().Info("Metrics setup - see /metrics")
 }
 
@@ -256,29 +267,37 @@ func SetPeerLossPct(hostIP, podIP string, lossPct float64) {
 	).Set(lossPct)
 }
 
-// SetPeerPathLength sets the estimated hop count gauge for a peer
-func SetPeerPathLength(hostIP, podIP string, pathLength int32) {
-	goldpingerPeersPathLength.WithLabelValues(
+// SetPeerHopCount sets the estimated hop count gauge for a peer
+func SetPeerHopCount(hostIP, podIP string, hopCount int32) {
+	goldpingerPeersHopCount.WithLabelValues(
 		GoldpingerConfig.Hostname,
 		hostIP,
 		podIP,
-	).Set(float64(pathLength))
+	).Set(float64(hopCount))
 }
 
 // DeletePeerUDPMetrics removes stale UDP metric labels for a destroyed peer
 func DeletePeerUDPMetrics(hostIP, podIP string) {
 	goldpingerPeersLossPct.DeleteLabelValues(GoldpingerConfig.Hostname, hostIP, podIP)
-	goldpingerPeersPathLength.DeleteLabelValues(GoldpingerConfig.Hostname, hostIP, podIP)
+	goldpingerPeersHopCount.DeleteLabelValues(GoldpingerConfig.Hostname, hostIP, podIP)
 	goldpingerPeersUDPRtt.DeleteLabelValues(GoldpingerConfig.Hostname, hostIP, podIP)
 }
 
-// ObservePeerUDPRtt records a UDP RTT observation in milliseconds
-func ObservePeerUDPRtt(hostIP, podIP string, rttMs float64) {
+// ObservePeerUDPRtt records a UDP RTT observation in seconds
+func ObservePeerUDPRtt(hostIP, podIP string, rttS float64) {
 	goldpingerPeersUDPRtt.WithLabelValues(
 		GoldpingerConfig.Hostname,
 		hostIP,
 		podIP,
-	).Observe(rttMs)
+	).Observe(rttS)
+}
+
+// CountUDPError counts instances of UDP probe errors
+func CountUDPError(host string) {
+	goldpingerUDPErrorsCounter.WithLabelValues(
+		GoldpingerConfig.Hostname,
+		host,
+	).Inc()
 }
 
 // returns a timer for easy observing of the durations of calls to kubernetes API

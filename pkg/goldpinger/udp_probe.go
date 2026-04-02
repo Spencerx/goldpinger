@@ -29,14 +29,21 @@ import (
 const (
 	udpMagic      = 0x47504E47 // "GPNG"
 	udpHeaderSize = 16         // 4 magic + 4 seq + 8 timestamp
+
+	// udpMaxPacketSize is the maximum UDP packet we will read. Sized to the
+	// standard Ethernet MTU (1500 bytes) which is the largest packet that
+	// will survive most networks without fragmentation. Any configured
+	// UDP_PACKET_SIZE larger than this will be clamped to this value to
+	// avoid silent truncation on the receive side.
+	udpMaxPacketSize = 1500
 )
 
 // UDPProbeResult holds the results of a UDP probe to a peer
 type UDPProbeResult struct {
-	LossPct    float64
-	PathLength int32
-	AvgRttMs   float64
-	Err        error
+	LossPct  float64
+	HopCount int32
+	AvgRttS  float64
+	Err      error
 }
 
 // StartUDPListener starts a UDP echo listener on the given port.
@@ -51,7 +58,7 @@ func StartUDPListener(port int) {
 
 	zap.L().Info("UDP echo listener started", zap.String("addr", addr))
 
-	buf := make([]byte, 1500)
+	buf := make([]byte, udpMaxPacketSize)
 	for {
 		n, remoteAddr, err := pc.ReadFrom(buf)
 		if err != nil {
@@ -75,13 +82,20 @@ func StartUDPListener(port int) {
 
 // ProbeUDP sends count UDP packets to the target and measures loss and hop count.
 func ProbeUDP(targetIP string, port, count, size int, timeout time.Duration) UDPProbeResult {
+	if count <= 0 {
+		return UDPProbeResult{Err: fmt.Errorf("packet count must be > 0, got %d", count)}
+	}
 	if size < udpHeaderSize {
 		size = udpHeaderSize
+	}
+	if size > udpMaxPacketSize {
+		size = udpMaxPacketSize
 	}
 
 	addr := net.JoinHostPort(targetIP, strconv.Itoa(port))
 	conn, err := net.Dial("udp", addr)
 	if err != nil {
+		CountUDPError(targetIP)
 		return UDPProbeResult{LossPct: 100, Err: fmt.Errorf("dial: %w", err)}
 	}
 	defer conn.Close()
@@ -113,6 +127,7 @@ func ProbeUDP(targetIP string, port, count, size int, timeout time.Duration) UDP
 		binary.BigEndian.PutUint64(pkt[8:16], uint64(time.Now().UnixNano()))
 		_, err := conn.Write(pkt)
 		if err != nil {
+			CountUDPError(targetIP)
 			zap.L().Debug("UDP send error", zap.Int("seq", i), zap.Error(err))
 		}
 	}
@@ -123,7 +138,7 @@ func ProbeUDP(targetIP string, port, count, size int, timeout time.Duration) UDP
 	deadline := time.Now().Add(timeout)
 	conn.SetReadDeadline(deadline)
 
-	recvBuf := make([]byte, 1500)
+	recvBuf := make([]byte, udpMaxPacketSize)
 
 	if isIPv6 {
 		p := ipv6.NewPacketConn(conn.(*net.UDPConn))
@@ -175,20 +190,20 @@ func ProbeUDP(targetIP string, port, count, size int, timeout time.Duration) UDP
 
 	lossPct := float64(count-received) / float64(count) * 100.0
 
-	var pathLength int32
+	var hopCount int32
 	if ttlFound {
-		pathLength = estimateHops(ttlValue)
+		hopCount = estimateHops(ttlValue)
 	}
 
-	var avgRttMs float64
+	var avgRttS float64
 	if received > 0 {
-		avgRttMs = float64(totalRttNs) / float64(received) / 1e6
+		avgRttS = float64(totalRttNs) / float64(received) / 1e9
 	}
 
 	return UDPProbeResult{
-		LossPct:    lossPct,
-		PathLength: pathLength,
-		AvgRttMs:   avgRttMs,
+		LossPct:  lossPct,
+		HopCount: hopCount,
+		AvgRttS:  avgRttS,
 	}
 }
 

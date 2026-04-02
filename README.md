@@ -325,8 +325,9 @@ This adds three Prometheus metrics:
 
 ```sh
 goldpinger_peers_loss_pct          # gauge: UDP packet loss percentage (0-100)
-goldpinger_peers_path_length       # gauge: estimated hop count
-goldpinger_peers_udp_rtt_ms        # histogram: UDP round-trip time in milliseconds
+goldpinger_peers_hop_count         # gauge: estimated hop count
+goldpinger_peers_udp_rtt_s         # histogram: UDP round-trip time in seconds
+goldpinger_udp_errors_total        # counter: UDP probe errors
 ```
 
 Links with partial loss are shown as yellow edges in the graph UI, and edge labels display the UDP RTT instead of HTTP latency when available.
@@ -367,8 +368,8 @@ goldpinger_nodes_health_total
 goldpinger_stats_total
 goldpinger_errors_total
 goldpinger_peers_loss_pct           # (UDP probe, when enabled)
-goldpinger_peers_path_length        # (UDP probe, when enabled)
-goldpinger_peers_udp_rtt_ms_*       # (UDP probe, when enabled)
+goldpinger_peers_hop_count          # (UDP probe, when enabled)
+goldpinger_peers_udp_rtt_s_*        # (UDP probe, when enabled)
 ```
 
 ### Grafana

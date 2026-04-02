@@ -16,6 +16,7 @@ package goldpinger
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -111,6 +112,24 @@ func (p *Pinger) Ping() {
 	CountCall("made", "ping")
 	start := time.Now()
 
+	// Run HTTP ping and UDP probe concurrently
+	var udpResult UDPProbeResult
+	var wg sync.WaitGroup
+	if GoldpingerConfig.UDPEnabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			targetIP := pickPodHostIP(p.pod.PodIP, p.pod.HostIP)
+			udpResult = ProbeUDP(
+				targetIP,
+				GoldpingerConfig.UDPPort,
+				GoldpingerConfig.UDPPacketCount,
+				GoldpingerConfig.UDPPacketSize,
+				GoldpingerConfig.UDPTimeout,
+			)
+		}()
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
@@ -120,37 +139,31 @@ func (p *Pinger) Ping() {
 	responseTimeMs := responseTime.Nanoseconds() / int64(time.Millisecond)
 	p.histogram.Observe(responseTime.Seconds())
 
+	// Wait for UDP probe to complete
+	wg.Wait()
+
 	OK := (err == nil)
 
-	// Run UDP probe if enabled
 	var lossPct float64
-	var pathLength int32
+	var hopCount int32
 	var udpRttMs float64
 	if GoldpingerConfig.UDPEnabled {
-		targetIP := pickPodHostIP(p.pod.PodIP, p.pod.HostIP)
-		udpResult := ProbeUDP(
-			targetIP,
-			GoldpingerConfig.UDPPort,
-			GoldpingerConfig.UDPPacketCount,
-			GoldpingerConfig.UDPPacketSize,
-			GoldpingerConfig.UDPTimeout,
-		)
 		lossPct = udpResult.LossPct
-		pathLength = udpResult.PathLength
-		udpRttMs = udpResult.AvgRttMs
+		hopCount = udpResult.HopCount
+		udpRttMs = udpResult.AvgRttS * 1000.0
 		if udpResult.Err != nil {
 			p.logger.Warn("UDP probe error", zap.Error(udpResult.Err))
 		} else {
 			p.logger.Debug("UDP probe complete",
 				zap.Float64("lossPct", lossPct),
-				zap.Int32("pathLength", pathLength),
+				zap.Int32("hopCount", hopCount),
 				zap.Float64("udpRttMs", udpRttMs),
 			)
 		}
 		SetPeerLossPct(p.pod.HostIP, p.pod.PodIP, lossPct)
-		SetPeerPathLength(p.pod.HostIP, p.pod.PodIP, pathLength)
-		if udpRttMs > 0 {
-			ObservePeerUDPRtt(p.pod.HostIP, p.pod.PodIP, udpRttMs)
+		SetPeerHopCount(p.pod.HostIP, p.pod.PodIP, hopCount)
+		if udpResult.AvgRttS > 0 {
+			ObservePeerUDPRtt(p.pod.HostIP, p.pod.PodIP, udpResult.AvgRttS)
 		}
 	}
 
@@ -166,7 +179,7 @@ func (p *Pinger) Ping() {
 				StatusCode:     200,
 				ResponseTimeMs: responseTimeMs,
 				LossPct:        lossPct,
-				PathLength:     pathLength,
+				PathLength:     hopCount,
 				UDPRttMs:       udpRttMs,
 			},
 		}
@@ -183,7 +196,7 @@ func (p *Pinger) Ping() {
 				StatusCode:     504,
 				ResponseTimeMs: responseTimeMs,
 				LossPct:        lossPct,
-				PathLength:     pathLength,
+				PathLength:     hopCount,
 				UDPRttMs:       udpRttMs,
 			},
 		}

@@ -188,11 +188,6 @@ func main() {
 
 	if goldpinger.GoldpingerConfig.UDPEnabled {
 		go goldpinger.StartUDPListener(goldpinger.GoldpingerConfig.UDPPort)
-		logger.Info("UDP echo listener started",
-			zap.Int("port", goldpinger.GoldpingerConfig.UDPPort),
-			zap.Int("packetCount", goldpinger.GoldpingerConfig.UDPPacketCount),
-			zap.Int("packetSize", goldpinger.GoldpingerConfig.UDPPacketSize),
-		)
 	}
 
 	logger.Info("All good, starting serving the API")
