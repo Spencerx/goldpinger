@@ -27,13 +27,16 @@ func TestDeletePeerMetrics_CleansResponseTimeHistogram(t *testing.T) {
 			GoldpingerConfig.Hostname = "test-instance"
 			defer func() { GoldpingerConfig.Hostname = origHostname }()
 
-			// Simulate a ping observation (call_type="ping")
+			// Simulate observations for both call_type values the histogram uses
 			goldpingerResponseTimePeersHistogram.WithLabelValues(
 				GoldpingerConfig.Hostname, "ping", tt.hostIP, tt.podIP,
 			).Observe(0.005)
+			goldpingerResponseTimePeersHistogram.WithLabelValues(
+				GoldpingerConfig.Hostname, "check", tt.hostIP, tt.podIP,
+			).Observe(0.010)
 
-			if countMetrics(goldpingerResponseTimePeersHistogram) == 0 {
-				t.Fatal("response time histogram has no label values before cleanup — test setup is broken")
+			if n := countMetrics(goldpingerResponseTimePeersHistogram); n != 2 {
+				t.Fatalf("response time histogram has %d label sets before cleanup, want 2 — test setup is broken", n)
 			}
 
 			DeletePeerMetrics(tt.hostIP, tt.podIP)
@@ -81,25 +84,31 @@ func TestDeletePeerMetrics_LeavesOtherPeersIntact(t *testing.T) {
 			GoldpingerConfig.Hostname = "test-instance"
 			defer func() { GoldpingerConfig.Hostname = origHostname }()
 
-			// Peer A
+			// Peer A — observe both call types
 			goldpingerResponseTimePeersHistogram.WithLabelValues(
 				GoldpingerConfig.Hostname, "ping", tt.peerA[0], tt.peerA[1],
 			).Observe(0.005)
+			goldpingerResponseTimePeersHistogram.WithLabelValues(
+				GoldpingerConfig.Hostname, "check", tt.peerA[0], tt.peerA[1],
+			).Observe(0.006)
 			SetPeerLossPct(tt.peerA[0], tt.peerA[1], 0)
 
-			// Peer B
+			// Peer B — observe both call types
 			goldpingerResponseTimePeersHistogram.WithLabelValues(
 				GoldpingerConfig.Hostname, "ping", tt.peerB[0], tt.peerB[1],
 			).Observe(0.010)
+			goldpingerResponseTimePeersHistogram.WithLabelValues(
+				GoldpingerConfig.Hostname, "check", tt.peerB[0], tt.peerB[1],
+			).Observe(0.011)
 			SetPeerLossPct(tt.peerB[0], tt.peerB[1], 1.5)
 
 			// Delete peer A only
 			DeletePeerMetrics(tt.peerA[0], tt.peerA[1])
 			DeletePeerUDPMetrics(tt.peerA[0], tt.peerA[1])
 
-			// Peer B should survive in both metrics
-			if countMetrics(goldpingerResponseTimePeersHistogram) == 0 {
-				t.Error("response time histogram lost all label sets — peer B should still exist")
+			// Peer B's ping and check histogram entries should both survive
+			if n := countMetrics(goldpingerResponseTimePeersHistogram); n != 2 {
+				t.Errorf("response time histogram has %d label set(s), want 2 for peer B (ping+check)", n)
 			}
 			if countMetrics(goldpingerPeersLossPct) == 0 {
 				t.Error("loss pct gauge lost all label sets — peer B should still exist")
@@ -108,6 +117,9 @@ func TestDeletePeerMetrics_LeavesOtherPeersIntact(t *testing.T) {
 			// Clean up peer B so it doesn't leak into other tests
 			goldpingerResponseTimePeersHistogram.DeleteLabelValues(
 				GoldpingerConfig.Hostname, "ping", tt.peerB[0], tt.peerB[1],
+			)
+			goldpingerResponseTimePeersHistogram.DeleteLabelValues(
+				GoldpingerConfig.Hostname, "check", tt.peerB[0], tt.peerB[1],
 			)
 			goldpingerPeersLossPct.DeleteLabelValues(
 				GoldpingerConfig.Hostname, tt.peerB[0], tt.peerB[1],
