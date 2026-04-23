@@ -300,6 +300,15 @@ func SetPeerHopCount(hostIP, podIP string, hopCount int32) {
 	).Set(float64(hopCount))
 }
 
+// DeletePeerMetrics removes stale metric labels for a destroyed peer.
+// The response-time histogram is observed with two call_type values:
+// "ping" (continuous from Pinger) and "check" (from CheckAllPods), so both
+// must be pruned. Must be called unconditionally when a peer is removed.
+func DeletePeerMetrics(hostIP, podIP string) {
+	goldpingerResponseTimePeersHistogram.DeleteLabelValues(GoldpingerConfig.Hostname, "ping", hostIP, podIP)
+	goldpingerResponseTimePeersHistogram.DeleteLabelValues(GoldpingerConfig.Hostname, "check", hostIP, podIP)
+}
+
 // DeletePeerUDPMetrics removes stale UDP metric labels for a destroyed peer.
 // This must be kept in sync with all per-peer UDP metrics to avoid stale
 // label sets lingering in /metrics after a pod rolls.
@@ -309,6 +318,7 @@ func DeletePeerUDPMetrics(hostIP, podIP string) {
 	goldpingerPeersUDPRtt.DeleteLabelValues(GoldpingerConfig.Hostname, hostIP, podIP)
 	goldpingerUDPDuplicatesCounter.DeleteLabelValues(GoldpingerConfig.Hostname, hostIP, podIP)
 	goldpingerUDPOutOfOrderCounter.DeleteLabelValues(GoldpingerConfig.Hostname, hostIP, podIP)
+	goldpingerUDPErrorsCounter.DeleteLabelValues(GoldpingerConfig.Hostname, pickPodHostIP(podIP, hostIP))
 }
 
 // ObservePeerUDPRtt records a UDP RTT observation in seconds
